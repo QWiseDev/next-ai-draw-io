@@ -6,6 +6,7 @@ import { AccountError } from "./errors"
 import type {
     AccountFolder,
     AccountUser,
+    AdminUserRow,
     CloudDocument,
     CloudDocumentMetadata,
 } from "./types"
@@ -46,15 +47,95 @@ export function createUser(
 
 export function findUserByUsername(
     username: string,
-): (AccountUser & { passwordHash: string }) | null {
+): (AccountUser & { passwordHash: string; disabled: boolean }) | null {
     const row = getAccountDb()
         .prepare(
-            "SELECT id, username, password_hash FROM users WHERE username = ?",
+            "SELECT id, username, password_hash, disabled FROM users WHERE username = ?",
         )
         .get(username) as any
     return row
-        ? { ...userFromRow(row), passwordHash: String(row.password_hash) }
+        ? {
+              ...userFromRow(row),
+              passwordHash: String(row.password_hash),
+              disabled: Number(row.disabled) === 1,
+          }
         : null
+}
+
+export function findUserById(
+    id: number,
+): (AccountUser & { disabled: boolean }) | null {
+    const row = getAccountDb()
+        .prepare("SELECT id, username, disabled FROM users WHERE id = ?")
+        .get(id) as any
+    return row
+        ? { ...userFromRow(row), disabled: Number(row.disabled) === 1 }
+        : null
+}
+
+export function listUsersWithStats(): AdminUserRow[] {
+    const rows = getAccountDb()
+        .prepare(
+            `SELECT u.id, u.username, u.created_at, u.disabled, u.last_login_at,
+                    (SELECT COUNT(*) FROM documents d
+                     WHERE d.user_id = u.id AND d.deleted_at IS NULL) AS file_count
+             FROM users u
+             ORDER BY u.created_at ASC, u.id ASC`,
+        )
+        .all() as any[]
+    return rows.map((row) => ({
+        id: Number(row.id),
+        username: String(row.username),
+        createdAt: Number(row.created_at),
+        lastLoginAt:
+            row.last_login_at == null ? null : Number(row.last_login_at),
+        fileCount: Number(row.file_count),
+        disabled: Number(row.disabled) === 1,
+    }))
+}
+
+export function setUserDisabled(id: number, disabled: boolean): void {
+    const db = getAccountDb()
+    const info = db
+        .prepare("UPDATE users SET disabled = ?, updated_at = ? WHERE id = ?")
+        .run(disabled ? 1 : 0, Date.now(), id)
+    if (Number(info.changes) === 0) {
+        throw new AccountError("User not found", 404, "user_not_found")
+    }
+    if (disabled) {
+        // All devices of the user sign out on their next request
+        db.prepare("DELETE FROM auth_sessions WHERE user_id = ?").run(id)
+    }
+}
+
+export function updateUserPassword(id: number, passwordHash: string): void {
+    const db = getAccountDb()
+    const info = db
+        .prepare(
+            "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
+        )
+        .run(passwordHash, Date.now(), id)
+    if (Number(info.changes) === 0) {
+        throw new AccountError("User not found", 404, "user_not_found")
+    }
+    // Old tokens stop working right away
+    db.prepare("DELETE FROM auth_sessions WHERE user_id = ?").run(id)
+}
+
+export function deleteUser(id: number): void {
+    // The users row cascades to its auth sessions, folders and documents
+    const info = getAccountDb()
+        .prepare("DELETE FROM users WHERE id = ?")
+        .run(id)
+    if (Number(info.changes) === 0) {
+        throw new AccountError("User not found", 404, "user_not_found")
+    }
+}
+
+export function touchLastLogin(id: number): void {
+    getAccountDb()
+        .prepare("UPDATE users SET last_login_at = ? WHERE id = ?")
+        .run(Date.now(), id)
 }
 
 export function createAuthSession(userId: number): {

@@ -34,3 +34,12 @@ export interface CloudDocument {
 export interface CloudChatSession extends ChatSession {
     revision?: number
 }
+
+export interface AdminUserRow {
+    id: number
+    username: string
+    createdAt: number
+    lastLoginAt: number | null
+    fileCount: number
+    disabled: boolean
+}

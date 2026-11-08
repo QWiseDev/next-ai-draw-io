@@ -4,7 +4,7 @@ import { readJsonBody } from "@/lib/account/api"
 import { isAccountMode } from "@/lib/account/db"
 import { AccountError, accountErrorResponse } from "@/lib/account/errors"
 import { hashPassword } from "@/lib/account/password"
-import { createUser } from "@/lib/account/store"
+import { createUser, listUsersWithStats } from "@/lib/account/store"
 import { checkAdminAuth } from "@/lib/admin/auth"
 
 export const runtime = "nodejs"
@@ -19,6 +19,21 @@ const accountSchema = z.object({
         .transform((value) => value.toLowerCase()),
     password: z.string().min(10).max(128),
 })
+
+export async function GET(req: Request): Promise<Response> {
+    try {
+        if (!isAccountMode()) {
+            throw new AccountError("Account mode is disabled", 404, "disabled")
+        }
+        const adminError = checkAdminAuth(req)
+        if (adminError) return adminError
+        const crossSite = rejectCrossSite(req)
+        if (crossSite) return crossSite
+        return Response.json({ users: listUsersWithStats() })
+    } catch (error) {
+        return accountErrorResponse(error)
+    }
+}
 
 export async function POST(req: Request): Promise<Response> {
     try {

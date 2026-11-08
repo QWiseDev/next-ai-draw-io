@@ -9,7 +9,11 @@ import {
     recordLoginFailure,
     resetLoginRate,
 } from "@/lib/account/rate-limit"
-import { createAuthSession, findUserByUsername } from "@/lib/account/store"
+import {
+    createAuthSession,
+    findUserByUsername,
+    touchLastLogin,
+} from "@/lib/account/store"
 
 export const runtime = "nodejs"
 
@@ -59,7 +63,15 @@ export async function POST(req: Request): Promise<Response> {
                 "invalid_credentials",
             )
         }
+        if (user.disabled) {
+            throw new AccountError(
+                "Account is disabled",
+                403,
+                "account_disabled",
+            )
+        }
         resetLoginRate(username)
+        touchLastLogin(user.id)
         const session = createAuthSession(user.id)
         return jsonWithSession(
             { user: { id: user.id, username: user.username } },

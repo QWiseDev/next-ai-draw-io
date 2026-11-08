@@ -42,7 +42,6 @@ CREATE TABLE IF NOT EXISTS documents (
 );
 CREATE INDEX IF NOT EXISTS documents_user_updated ON documents(user_id, deleted_at, updated_at DESC);
 CREATE INDEX IF NOT EXISTS documents_folder ON documents(folder_id);
-PRAGMA user_version = 1;
 `
 
 const globalState = globalThis as typeof globalThis & {
@@ -63,9 +62,36 @@ export function getAccountDb(): DatabaseSync {
     db.exec("PRAGMA journal_mode = WAL;")
     db.exec("PRAGMA foreign_keys = ON;")
     db.exec(SCHEMA)
+    migrateAccountDb(db)
     chmodSync(dbPath, 0o600)
     globalState.__accountDb = db
     return db
+}
+
+// SCHEMA stays at v1; column additions land here so an existing database
+// upgrades in place without touching its rows
+function migrateAccountDb(db: DatabaseSync): void {
+    const row = db.prepare("PRAGMA user_version").get() as
+        | { user_version: number }
+        | undefined
+    const version = Number(row?.user_version ?? 0)
+    if (version < 1) {
+        db.exec("PRAGMA user_version = 1")
+    }
+    if (version < 2) {
+        const columns = db.prepare("PRAGMA table_info(users)").all() as {
+            name: string
+        }[]
+        if (!columns.some((column) => column.name === "disabled")) {
+            db.exec(
+                "ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0",
+            )
+        }
+        if (!columns.some((column) => column.name === "last_login_at")) {
+            db.exec("ALTER TABLE users ADD COLUMN last_login_at INTEGER")
+        }
+        db.exec("PRAGMA user_version = 2")
+    }
 }
 
 export function resetAccountDbForTests(): void {

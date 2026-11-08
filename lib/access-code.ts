@@ -8,8 +8,16 @@
  * Host. Returns the response to send, or null when the request may go on.
  */
 export function rejectCrossSite(req: Request): Response | null {
+    // GET and DELETE carry no body a cross-site form could forge (forms only
+    // send GET/POST; other methods need a CORS preflight), so only body
+    // requests must declare JSON
+    const method = req.method.toUpperCase()
     const contentType = req.headers.get("content-type") ?? ""
-    if (!/^\s*application\/json\b/i.test(contentType)) {
+    if (
+        method !== "GET" &&
+        method !== "DELETE" &&
+        !/^\s*application\/json\b/i.test(contentType)
+    ) {
         return Response.json(
             { error: "Content-Type must be application/json" },
             { status: 415 },

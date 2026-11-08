@@ -18,6 +18,7 @@ import {
     SETTINGS_BY_GROUP,
 } from "@/lib/admin/settings-registry"
 import { getApiEndpoint } from "@/lib/base-path"
+import { getAdminUsersTexts } from "@/lib/i18n/admin-users-texts"
 import { formatMessage } from "@/lib/i18n/utils"
 import { cn } from "@/lib/utils"
 import {
@@ -32,10 +33,11 @@ import {
 } from "./admin-shared"
 import { ModelsSection } from "./models-section"
 import { SettingField } from "./setting-field"
+import { UsersSection } from "./users-section"
 
 // ── Page ─────────────────────────────────────────────────────────────
 
-const NAV_GROUP_IDS = ["models", ...SETTING_GROUPS.map((g) => g.id)]
+const NAV_GROUP_IDS = ["models", ...SETTING_GROUPS.map((g) => g.id), "users"]
 
 // For each toggleable group, whether any of its settings has a value (from
 // the settings file or the environment)
@@ -52,6 +54,9 @@ function groupsWithValues(map: SettingsMap): Record<string, boolean> {
 
 export default function AdminPage() {
     const dict = useDictionary()
+    const usersText = getAdminUsersTexts(
+        typeof document === "undefined" ? null : document.documentElement.lang,
+    )
     // Localized group title/description, keyed by group id
     const groupText = (id: string) =>
         (
@@ -63,7 +68,11 @@ export default function AdminPage() {
     const navItems = NAV_GROUP_IDS.map((id) => ({
         id,
         title:
-            id === "models" ? dict.admin.models : (groupText(id)?.title ?? id),
+            id === "models"
+                ? dict.admin.models
+                : id === "users"
+                  ? usersText.title
+                  : (groupText(id)?.title ?? id),
     }))
     const [password, setPassword] = useState("")
     const [authedPassword, setAuthedPassword] = useState<string | null>(null)
@@ -568,6 +577,20 @@ export default function AdminPage() {
                             </section>
                         )
                     })}
+
+                    {/* Account users (account mode only) */}
+                    <section aria-labelledby="users" className="mb-10">
+                        <h2
+                            id="users"
+                            className="scroll-mt-20 text-base font-semibold"
+                        >
+                            {usersText.title}
+                        </h2>
+                        <p className="mb-3 mt-1 text-sm text-muted-foreground text-pretty">
+                            {usersText.description}
+                        </p>
+                        <UsersSection password={authedPassword ?? ""} />
+                    </section>
                 </main>
             </div>
 
