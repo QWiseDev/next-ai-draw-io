@@ -3,6 +3,7 @@
 import { MessageSquare, PanelRightOpen, Settings, Shapes } from "lucide-react"
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useRef, useState } from "react"
+import { AccountMenu } from "@/components/account/account-menu"
 import { CanvasStage } from "@/components/canvas/canvas-stage"
 import { CompareDialog } from "@/components/canvas/compare-dialog"
 import { SelectionAsk } from "@/components/canvas/selection-ask"
@@ -15,9 +16,10 @@ import { ChatVersionsProvider } from "@/components/chat/chat-versions"
 import { LobbyHero } from "@/components/chat/lobby-hero"
 import { SaveDialog } from "@/components/save-dialog"
 import { SettingsDialog } from "@/components/settings-dialog"
-import { BrandMark } from "@/components/workspace/brand-mark"
 import { DocsButton } from "@/components/workspace/docs-button"
+import { HomeLogo } from "@/components/workspace/home-logo"
 import { IconButton } from "@/components/workspace/icon-button"
+import { AccountProvider, useAccount } from "@/contexts/account-context"
 import { useDiagram } from "@/contexts/diagram-context"
 import { useDictionary } from "@/hooks/use-dictionary"
 import { usePanelWidth } from "@/hooks/use-panel-width"
@@ -90,7 +92,7 @@ function StartBar({
     const openSettings = useUiStore((s) => s.openSettings)
     return (
         <div className={className}>
-            <BrandMark className="size-6" />
+            <HomeLogo className="size-6" />
             <span
                 className={cn(
                     "text-[13px] font-semibold tracking-[-0.01em]",
@@ -107,6 +109,7 @@ function StartBar({
             >
                 <Settings />
             </IconButton>
+            <AccountMenu />
         </div>
     )
 }
@@ -120,7 +123,19 @@ export function Workspace() {
     useSavedLocale()
 
     return (
-        <ChatEngineProvider>
+        <AccountProvider>
+            <AccountWorkspace />
+        </AccountProvider>
+    )
+}
+
+function AccountWorkspace() {
+    const account = useAccount()
+    if (account.loading) {
+        return <div className="fixed inset-0 bg-canvas" />
+    }
+    return (
+        <ChatEngineProvider key={account.user?.id ?? "local"}>
             <ChatVersionsProvider>
                 <WorkspaceLayout />
             </ChatVersionsProvider>
@@ -316,7 +331,7 @@ function WorkspaceLayout() {
                                 right-hand buttons it would cover */}
                             {!showHero && !panelOpen && (
                                 <div className="absolute top-[60px] right-3 z-20 flex items-center gap-1 rounded-xl bg-card p-1 shadow-float animate-fade-in">
-                                    <BrandMark className="mx-0.5 size-6" />
+                                    <HomeLogo className="mx-0.5 size-6" />
                                     <IconButton
                                         label={dict.nav.showPanel}
                                         shortcut={`${modKey}B`}
@@ -325,6 +340,7 @@ function WorkspaceLayout() {
                                     >
                                         <PanelRightOpen />
                                     </IconButton>
+                                    <AccountMenu />
                                 </div>
                             )}
 

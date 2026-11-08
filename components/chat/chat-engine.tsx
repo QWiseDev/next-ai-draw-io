@@ -21,6 +21,7 @@ import {
 } from "react"
 import { toast } from "sonner"
 import type { ValidationState } from "@/components/chat/ValidationCard"
+import { useAccount } from "@/contexts/account-context"
 import { useDiagram } from "@/contexts/diagram-context"
 import { useDiagramToolHandlers } from "@/hooks/use-diagram-tool-handlers"
 import { useDictionary } from "@/hooks/use-dictionary"
@@ -313,7 +314,11 @@ export function ChatEngineProvider({
     urlDataRef.current = urlData
 
     const modelConfig = useModelConfig()
-    const sessionManager = useSessionManager({ initialSessionId: urlSessionId })
+    const account = useAccount()
+    const sessionManager = useSessionManager({
+        initialSessionId: urlSessionId,
+        accountUserId: account.user ? String(account.user.id) : null,
+    })
 
     const [input, setInputState] = useState("")
 

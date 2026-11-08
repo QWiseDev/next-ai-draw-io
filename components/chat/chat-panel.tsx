@@ -8,6 +8,7 @@ import {
     Settings,
 } from "lucide-react"
 import { useRef } from "react"
+import { AccountMenu } from "@/components/account/account-menu"
 import { VersionStrip } from "@/components/canvas/version-strip"
 import { DevXmlSimulator } from "@/components/dev-xml-simulator"
 import {
@@ -15,7 +16,7 @@ import {
     TooltipContent,
     TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { BrandMark } from "@/components/workspace/brand-mark"
+import { HomeLogo } from "@/components/workspace/home-logo"
 import { ButtonTooltip, IconButton } from "@/components/workspace/icon-button"
 import { useDiagram } from "@/contexts/diagram-context"
 import { useDictionary } from "@/hooks/use-dictionary"
@@ -140,7 +141,7 @@ export function ChatPanel({
             data-testid="chat-panel"
         >
             <header className="@container flex h-[52px] shrink-0 items-center gap-1 pr-2 pl-3">
-                <BrandMark />
+                <HomeLogo />
                 {/* The title, framed with a grid icon so it reads as the way
                     to the saved diagrams (its menu) */}
                 <Tooltip>
@@ -202,6 +203,7 @@ export function ChatPanel({
                     >
                         <Settings />
                     </IconButton>
+                    <AccountMenu />
                     {!mobile && (
                         <IconButton
                             label={dict.nav.hidePanel}

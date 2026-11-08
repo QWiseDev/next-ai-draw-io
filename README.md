@@ -178,6 +178,8 @@ Open [http://localhost:6002](http://localhost:6002).
 
 **Several models and the admin panel**: list several model IDs in `AI_MODEL` separated by commas, or configure models from several providers with the `AI_MODELS_CONFIG` environment variable or an `ai-models.json` file, and every user can use them without a key of their own. Set `ADMIN_PASSWORD` and open `/admin` to manage models, access codes, feature switches, observability and quotas from a web page; see the [admin panel guide](./docs/en/admin-panel.md).
 
+**Account files**: set `ACCOUNT_MODE=true` to let users sign in and save diagrams to your server, with a file center, folders and trash; see the [account files guide](./docs/en/account-files.md). Without it, diagrams stay in the browser as before.
+
 ## Support
 
 -   Questions and ideas: open a [GitHub issue](https://github.com/DayuanJiang/next-ai-draw-io/issues) or email me[at]jiang.jp

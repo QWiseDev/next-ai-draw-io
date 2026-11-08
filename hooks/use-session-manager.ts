@@ -2,22 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useDictionary } from "@/hooks/use-dictionary"
+import * as accountSessionStorage from "@/lib/account-session-storage"
 import { toastUnexpectedError } from "@/lib/client-error-report"
 import type { Dictionary } from "@/lib/i18n/dictionaries"
+import * as localSessionStorage from "@/lib/session-storage"
 import {
     type ChatSession,
     createEmptySession,
-    deleteSession as deleteSessionFromDB,
-    enforceSessionLimit,
     extractTitle,
-    getAllSessionMetadata,
-    getSession,
-    isIndexedDBAvailable,
-    readSessionCount,
-    renameSession as renameSessionInDB,
     type SessionMetadata,
     type StoredMessage,
-    saveSession,
 } from "@/lib/session-storage"
 import { STORAGE_KEYS } from "@/lib/storage"
 import type { DiagramVersion } from "@/stores/versions-store"
@@ -83,10 +77,10 @@ export interface UseSessionManagerReturn {
 // focus also fires each time the user clicks back from the draw.io iframe
 const FOCUS_REFRESH_INTERVAL_MS = 30_000
 
-function notifySaveFailed(dict: Dictionary) {
+function notifySaveFailed(dict: Dictionary, storageMessage?: string | null) {
     // Same id, so repeated failures update one toast instead of stacking
     toastUnexpectedError(
-        dict.errors.sessionSaveFailed,
+        storageMessage ?? dict.errors.sessionSaveFailed,
         dict.report.button,
         undefined,
         {
@@ -98,13 +92,19 @@ function notifySaveFailed(dict: Dictionary) {
 interface UseSessionManagerOptions {
     /** Session ID from URL param - if provided, load this session; if null, start blank */
     initialSessionId?: string | null
+    accountUserId?: string | null
 }
 
 export function useSessionManager(
     options: UseSessionManagerOptions = {},
 ): UseSessionManagerReturn {
-    const { initialSessionId } = options
+    const { initialSessionId, accountUserId } = options
     const dict = useDictionary()
+    const storage = accountUserId ? accountSessionStorage : localSessionStorage
+    const storageSaveError = () =>
+        (
+            storage as { getSaveErrorMessage?: () => string | null }
+        ).getSaveErrorMessage?.() ?? null
     const [sessions, setSessions] = useState<SessionMetadata[]>([])
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(
         null,
@@ -163,8 +163,8 @@ export function useSessionManager(
 
     // Load sessions list
     const refreshSessions = useCallback(async () => {
-        setSessions(await getAllSessionMetadata())
-    }, [])
+        setSessions(await storage.getAllSessionMetadata())
+    }, [storage])
 
     // Initialize on mount
     useEffect(() => {
@@ -174,7 +174,7 @@ export function useSessionManager(
         async function init() {
             setIsLoading(true)
 
-            if (!isIndexedDBAvailable()) {
+            if (!storage.isIndexedDBAvailable()) {
                 setIsAvailable(false)
                 setIsLoading(false)
                 return
@@ -184,14 +184,14 @@ export function useSessionManager(
 
             try {
                 // Load sessions list
-                const metadata = await getAllSessionMetadata()
+                const metadata = await storage.getAllSessionMetadata()
                 setSessions(metadata)
                 // The desktop app may try its other port next launch, where
                 // an older version may have saved the chats: only when this
                 // origin surely has none (a failed read is not "none") and
                 // keeps no model settings or keys either
                 if (window.electronAPI?.chatsLoaded) {
-                    const count = await readSessionCount()
+                    const count = await storage.readSessionCount()
                     // The app saves an empty config on its first load; the
                     // providers are what holds the keys, besides an access
                     // code
@@ -214,7 +214,7 @@ export function useSessionManager(
 
                 // Only load a session if initialSessionId is provided (from URL param)
                 if (initialSessionId) {
-                    const session = await getSession(initialSessionId)
+                    const session = await storage.getSession(initialSessionId)
                     if (session) changeChat(session)
                     // If session not found, stay in blank state (URL has invalid session ID)
                 }
@@ -225,7 +225,7 @@ export function useSessionManager(
         }
 
         init()
-    }, [initialSessionId, changeChat])
+    }, [initialSessionId, changeChat, storage])
 
     // Handle URL session ID changes after initialization
     // Note: intentionally NOT including currentSessionId in deps to avoid race conditions
@@ -241,7 +241,7 @@ export function useSessionManager(
             if (initialSessionId) {
                 const generation = chatGenerationRef.current
                 // URL has session ID - load it
-                const session = await getSession(initialSessionId)
+                const session = await storage.getSession(initialSessionId)
 
                 // Check if this request is still the latest (sequence guard)
                 // If not, a newer URL change happened while we were loading
@@ -276,7 +276,7 @@ export function useSessionManager(
         }
 
         handleSessionIdChange()
-    }, [initialSessionId, isAvailable, changeChat])
+    }, [initialSessionId, isAvailable, changeChat, storage])
 
     // Refresh sessions on window focus (multi-tab sync), at most once per interval
     const lastFocusRefreshRef = useRef(0)
@@ -302,11 +302,11 @@ export function useSessionManager(
             // last: the caller may have just saved it)
             const current = currentSessionRef.current
             if (current && current.messages.length > 0) {
-                await saveSession(current)
+                await storage.saveSession(current)
             }
 
             // Load the target session
-            const session = await getSession(id)
+            const session = await storage.getSession(id)
             if (!session) {
                 console.error("Session not found:", id)
                 return null
@@ -322,14 +322,14 @@ export function useSessionManager(
                 versions: session.versions,
             }
         },
-        [currentSessionId, changeChat],
+        [currentSessionId, changeChat, storage],
     )
 
     // Delete a session
     const deleteSession = useCallback(
         async (id: string): Promise<{ wasCurrentSession: boolean }> => {
             const wasCurrentSession = id === currentSessionId
-            await deleteSessionFromDB(id)
+            await storage.deleteSession(id)
 
             // If deleting current session, clear state (caller will show new empty session)
             if (wasCurrentSession) changeChat(null)
@@ -338,7 +338,7 @@ export function useSessionManager(
 
             return { wasCurrentSession }
         },
-        [currentSessionId, refreshSessions, changeChat],
+        [currentSessionId, refreshSessions, changeChat, storage],
     )
 
     // Save current session data (debounced externally by caller)
@@ -374,12 +374,12 @@ export function useSessionManager(
                     }
                     // Without a stored session, keep no session id (it would end
                     // up in the URL and point to nothing after a reload)
-                    if (!(await saveSession(newSession))) {
-                        notifySaveFailed(dict)
+                    if (!(await storage.saveSession(newSession))) {
+                        notifySaveFailed(dict, storageSaveError())
                         return false
                     }
                     savedSeqRef.current = seq
-                    await enforceSessionLimit(
+                    await storage.enforceSessionLimit(
                         () => openingSessionRef.current?.id,
                     )
                     if (stillOnScreen()) {
@@ -410,8 +410,8 @@ export function useSessionManager(
                             : currentSession.title,
                 }
 
-                if (!(await saveSession(updatedSession))) {
-                    notifySaveFailed(dict)
+                if (!(await storage.saveSession(updatedSession))) {
+                    notifySaveFailed(dict, storageSaveError())
                     return false
                 }
                 savedSeqRef.current = seq
@@ -445,7 +445,7 @@ export function useSessionManager(
             saveQueueRef.current = result.catch(() => {})
             return result
         },
-        [refreshSessions, dict],
+        [refreshSessions, dict, storage],
     )
 
     // Clear current session state (for starting fresh without loading another session)
@@ -474,16 +474,20 @@ export function useSessionManager(
             // In the save queue, so a save running now cannot put the old
             // title back
             const run = async () => {
-                const updated = await renameSessionInDB(id, trimmed)
+                const updated = await storage.renameSession(id, trimmed)
                 // Also when it could not be stored (another tab deleted the
                 // chat): the next save of the chat on screen writes it
                 const current = currentSessionRef.current
                 if (current?.id === id) {
-                    currentSessionRef.current = { ...current, title: trimmed }
+                    currentSessionRef.current = {
+                        ...current,
+                        ...(updated ?? {}),
+                        title: trimmed,
+                    }
                     setCurrentSession(currentSessionRef.current)
                 }
                 if (!updated) {
-                    notifySaveFailed(dict)
+                    notifySaveFailed(dict, storageSaveError())
                     return
                 }
                 setSessions((prev) =>
@@ -496,7 +500,7 @@ export function useSessionManager(
             saveQueueRef.current = result.catch(() => {})
             return result
         },
-        [dict],
+        [dict, storage],
     )
 
     return {
